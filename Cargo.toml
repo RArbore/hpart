@@ -1,0 +1,9 @@
+[package]
+name = "hpart"
+version = "0.1.0"
+edition = "2021"
+authors = ["Russel Arbore", "Ryan Ziegler"]
+description = "A hypergraph partitioning library."
+license = "Apache-2.0"
+
+[dependencies]
