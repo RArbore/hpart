@@ -7,3 +7,4 @@ description = "A hypergraph partitioning library."
 license = "Apache-2.0"
 
 [dependencies]
+bitvec = "*"
