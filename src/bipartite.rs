@@ -1,3 +1,5 @@
+use std::ops::{Add, AddAssign};
+
 use bitvec::prelude::*;
 
 type Index = u32;
@@ -5,7 +7,7 @@ type Index = u32;
 /// The data structure internal to this hypergraph partitioner is a bipartite
 /// graph between pins and nets.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct Bipartite<V, E> {
+pub(crate) struct Bipartite<V: Add + AddAssign + Copy + Sized, E: Add + AddAssign + Copy + Sized> {
     // V, E, and A arrays as described in section 4.5 of Schlag '2015.
     pub(crate) v: Vec<(Index, Index)>,
     pub(crate) e: Vec<(Index, Index)>,
@@ -31,15 +33,63 @@ pub(crate) struct Memento {
     pub(crate) u_len: Index,
 }
 
-impl<V, E> Bipartite<V, E> {
+impl<V: Add + AddAssign + Copy + Sized, E: Add + AddAssign + Copy + Sized> Bipartite<V, E> {
     /// Implements Algorithm 2: Contract from Schlag '2015.
     pub(crate) fn contract(&mut self, u: Index, v: Index) -> Memento {
-        todo!()
+        assert_ne!(u, v);
+        let u_idx = self.v[u as usize].0;
+        let u_len = self.v[u as usize].1;
+        let memento = Memento { u, v, u_idx, u_len };
+
+        let c_v = self.c[v as usize];
+        self.c[u as usize] += c_v;
+        let mut copy = true;
+        let incident: Vec<_> = self.incident_nets(v).collect();
+        for e in incident {
+            let e_idx = self.e[e as usize].0;
+            let e_len = self.e[e as usize].1;
+            let l = e_idx + e_len - 1;
+            let mut tau = l;
+            for i in e_idx..=l {
+                if self.a[i as usize] == v {
+                    let a_i = self.a[i as usize];
+                    self.a[i as usize] = self.a[l as usize];
+                    self.a[l as usize] = a_i;
+                }
+
+                if self.a[i as usize] == u {
+                    tau = i;
+                }
+            }
+
+            if tau == l {
+                self.a[l as usize] = u;
+                if copy {
+                    let incident_u: Vec<_> = self.incident_nets(u).collect();
+                    self.a.extend(incident_u);
+                    self.v[u as usize].0 = self.a.len() as u32 - self.v[u as usize].1;
+                    copy = false;
+                }
+                self.a.push(e);
+                self.v[u as usize].1 += 1;
+            } else {
+                self.e[e as usize].1 -= 1;
+            }
+        }
+
+        self.v_enabled.set(v as usize, false);
+        memento
     }
 
     /// Implements Algorithm 3: Uncontract from Schlag '2015.
     pub(crate) fn uncontract(&mut self, memento: Memento) {
         todo!()
+    }
+
+    fn incident_nets(&self, v: Index) -> impl Iterator<Item = Index> + '_ {
+        let v_idx = self.v[v as usize].0 as usize;
+        let v_len = self.v[v as usize].1 as usize;
+        self.a[v_idx..v_idx + v_len].iter().map(|x| *x)
     }
 }
 
