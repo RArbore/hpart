@@ -1,2 +1,3 @@
 mod bipartite;
-//mod coarsen;
+mod coarsen;
+mod initial;

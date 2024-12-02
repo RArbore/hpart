@@ -117,12 +117,26 @@ impl Bipartite {
         }
     }
 
-    fn incident_nets(&self, v: Index) -> impl Iterator<Item = Index> + '_ {
+    pub(crate) fn incident_nets(&self, v: Index) -> impl Iterator<Item = Index> + '_ {
         let v_idx = self.v[v as usize].0 as usize;
         let v_len = self.v[v as usize].1 as usize;
         self.a[v_idx..v_idx + v_len].iter().map(|x| *x)
     }
+
+    pub(crate) fn incident_pins(&self, v: Index) -> impl Iterator<Item = Index> + '_ {
+        self.incident_nets(v)
+            .map(|e| {
+                let e_idx = self.e[e as usize].0 as usize;
+                let e_len = self.e[e as usize].1 as usize;
+                self.a[e_idx..e_idx + e_len].iter().map(|x| *x)
+            })
+            .flatten()
+    }
 }
+
+/// A bipartition is just the vertices in each half. Technically, only one of
+/// these is necessary to derive the other, but it's convenient to have both.
+pub(crate) type Bipartition = (Vec<Index>, Vec<Index>);
 
 #[cfg(test)]
 mod tests {
