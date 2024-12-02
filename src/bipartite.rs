@@ -1,13 +1,11 @@
-use std::ops::{Add, AddAssign};
-
 use bitvec::prelude::*;
 
-type Index = u32;
+pub(crate) type Index = u32;
 
 /// The data structure internal to this hypergraph partitioner is a bipartite
 /// graph between pins and nets.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct Bipartite<V: Add + AddAssign + Copy + Sized, E: Add + AddAssign + Copy + Sized> {
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Bipartite {
     // V, E, and A arrays as described in section 4.5 of Schlag '2015.
     pub(crate) v: Vec<(Index, Index)>,
     pub(crate) e: Vec<(Index, Index)>,
@@ -18,8 +16,8 @@ pub(crate) struct Bipartite<V: Add + AddAssign + Copy + Sized, E: Add + AddAssig
     pub(crate) v_enabled: BitVec,
 
     // Capacities and weights of pins and nets.
-    pub(crate) c: Vec<V>,
-    pub(crate) w: Vec<E>,
+    pub(crate) c: Vec<f32>,
+    pub(crate) w: Vec<f32>,
 }
 
 /// Contractions produce mementos that can be applied in reverse to perform
@@ -33,7 +31,7 @@ pub(crate) struct Memento {
     pub(crate) u_len: Index,
 }
 
-impl<V: Add + AddAssign + Copy + Sized, E: Add + AddAssign + Copy + Sized> Bipartite<V, E> {
+impl Bipartite {
     /// Implements Algorithm 2: Contract from Schlag '2015.
     pub(crate) fn contract(&mut self, u: Index, v: Index) -> Memento {
         assert_ne!(u, v);
@@ -67,7 +65,7 @@ impl<V: Add + AddAssign + Copy + Sized, E: Add + AddAssign + Copy + Sized> Bipar
                 if copy {
                     let incident_u: Vec<_> = self.incident_nets(u).collect();
                     self.a.extend(incident_u);
-                    self.v[u as usize].0 = self.a.len() as u32 - self.v[u as usize].1;
+                    self.v[u as usize].0 = self.a.len() as Index - self.v[u as usize].1;
                     copy = false;
                 }
                 self.a.push(e);
@@ -82,8 +80,41 @@ impl<V: Add + AddAssign + Copy + Sized, E: Add + AddAssign + Copy + Sized> Bipar
     }
 
     /// Implements Algorithm 3: Uncontract from Schlag '2015.
-    pub(crate) fn uncontract(&mut self, memento: Memento) {
-        todo!()
+    pub(crate) fn uncontract(&mut self, m: Memento) {
+        self.v_enabled.set(m.v as usize, true);
+        let mut b = bitvec![usize, Lsb0; 0; self.e.len()];
+        for e in self.incident_nets(m.v) {
+            b.set(e as usize, true);
+        }
+        for i in m.u_idx..m.u_idx + m.u_len {
+            b.set(self.a[i as usize] as usize, false);
+        }
+
+        if self.v[m.u as usize].1 > m.u_len {
+            let inc_u: Vec<_> = self.incident_nets(m.u).collect();
+            for e in inc_u {
+                if b[e as usize] {
+                    let e_idx = self.e[e as usize].0;
+                    let e_len = self.e[e as usize].1;
+                    for p_idx in e_idx..e_idx + e_len {
+                        if self.a[p_idx as usize] == m.u {
+                            self.a[p_idx as usize] = m.v;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        self.v[m.u as usize].0 = m.u_idx;
+        self.v[m.u as usize].1 = m.u_len;
+        self.c[m.u as usize] -= self.c[m.v as usize];
+        let inc_v: Vec<_> = self.incident_nets(m.v).collect();
+        for e in inc_v {
+            if !b[e as usize] {
+                self.e[e as usize].1 += 1;
+            }
+        }
     }
 
     fn incident_nets(&self, v: Index) -> impl Iterator<Item = Index> + '_ {
@@ -100,26 +131,38 @@ mod tests {
     #[test]
     fn simple_contract() {
         // Construct the hypergraph shown in Figure 2 in Schlag '2015.
-        let mut contract = Bipartite {
+        let original = Bipartite {
             v: vec![(0, 1), (1, 2), (3, 1), (4, 1), (5, 1), (6, 1)],
             e: vec![(7, 4), (11, 3)],
             a: vec![0, 0, 1, 0, 0, 1, 1, 0, 1, 2, 3, 1, 4, 5],
             v_enabled: bitvec![usize, Lsb0; 1; 6],
-            c: vec![1; 6],
-            w: vec![1; 2],
+            c: vec![1.0; 6],
+            w: vec![1.0; 2],
         };
 
-        contract.contract(0, 1);
+        let mut contract = original.clone();
+        let m = contract.contract(0, 1);
 
         let correct = Bipartite {
             v: vec![(14, 2), (1, 2), (3, 1), (4, 1), (5, 1), (6, 1)],
             e: vec![(7, 3), (11, 3)],
             a: vec![0, 0, 1, 0, 0, 1, 1, 0, 3, 2, 1, 5, 4, 0, 0, 1],
             v_enabled: bitvec![1, 0, 1, 1, 1, 1],
-            c: vec![2, 1, 1, 1, 1, 1],
-            w: vec![1; 2],
+            c: vec![2.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            w: vec![1.0; 2],
         };
+        assert_eq!(contract, correct);
 
+        contract.uncontract(m);
+
+        let correct = Bipartite {
+            v: vec![(0, 1), (1, 2), (3, 1), (4, 1), (5, 1), (6, 1)],
+            e: vec![(7, 4), (11, 3)],
+            a: vec![0, 0, 1, 0, 0, 1, 1, 0, 3, 2, 1, 5, 4, 1, 0, 1],
+            v_enabled: bitvec![usize, Lsb0; 1; 6],
+            c: vec![1.0; 6],
+            w: vec![1.0; 2],
+        };
         assert_eq!(contract, correct);
     }
 }
