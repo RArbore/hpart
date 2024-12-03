@@ -9,8 +9,8 @@ pub(crate) fn coarsen(h: &mut Bipartite) -> Vec<Memento> {
     let c_max = S * h.total_capacity() / T as f32;
 
     let mut pq = BinaryHeap::new();
-    for u in 0..h.v.len() as Index {
-        if h.c[u as usize] > c_max {
+    for u in h.pins() {
+        if h.capacity(u) > c_max {
             continue;
         }
 
@@ -20,11 +20,11 @@ pub(crate) fn coarsen(h: &mut Bipartite) -> Vec<Memento> {
             .unwrap();
         pq.push((OrderedFloat(rate(h, u, v)), (u, v)));
     }
-    let mut removed = bitvec![usize, Lsb0; 0; h.v.len()];
-    let mut invalid = bitvec![usize, Lsb0; 0; h.v.len()];
+    let mut removed = bitvec![usize, Lsb0; 0; h.pin_index_space_size()];
+    let mut invalid = bitvec![usize, Lsb0; 0; h.pin_index_space_size()];
 
     let mut mementos = vec![];
-    while h.v.len() >= T {
+    while h.num_pins() >= T {
         let Some((_, (u, v))) = pq.pop() else {
             continue;
         };
@@ -57,14 +57,11 @@ const T: usize = 320;
 const S: f32 = 3.25;
 
 fn rate(h: &Bipartite, u: Index, v: Index) -> f32 {
-    let inv_c = 1.0 / (h.c[u as usize] * h.c[v as usize]);
+    let inv_c = 1.0 / (h.capacity(u) * h.capacity(v));
     let mut heavy_edge = 0.0;
-    for e in 0..h.e.len() {
-        let e_idx = h.e[e].0 as usize;
-        let e_len = h.e[e].1 as usize;
-        let e_adj = &h.a[e_idx..e_idx + e_len];
-        if e_adj.contains(&u) && e_adj.contains(&v) {
-            heavy_edge += h.w[e] / (e_adj.len() - 1) as f32;
+    for e in h.nets() {
+        if h.pins_in_net(e).any(|p| p == u) && h.pins_in_net(e).any(|p| p == u) {
+            heavy_edge += h.weight(e) / (h.pins_in_net(e).len() - 1) as f32;
         }
     }
     inv_c * heavy_edge

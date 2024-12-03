@@ -34,17 +34,17 @@ pub(crate) fn initial_partitioning(h: &Bipartite, epsilon: f32) -> Bipartition {
 }
 
 fn random_partitioning(h: &Bipartite) -> Bipartition {
-    (0..h.v.len()).map(|_| random()).collect()
+    (0..h.pin_index_space_size()).map(|_| random()).collect()
 }
 
 fn bfs_half(h: &Bipartite) -> Bipartition {
-    let start_v: Index = random::<Index>() % h.v.len() as Index;
+    let start_v = random_vertex(h);
     let mut queue = VecDeque::new();
     queue.push_back(start_v);
-    let mut visited = bitvec![usize, Lsb0; 0; h.v.len()];
+    let mut visited = bitvec![usize, Lsb0; 0; h.pin_index_space_size()];
     visited.set(start_v as usize, true);
 
-    let mut bipartition = vec![false; h.v.len()];
+    let mut bipartition = vec![false; h.pin_index_space_size()];
     let mut num_visited = 0;
     while let Some(pop) = queue.pop_front() {
         for neighbor in h.incident_pins(pop) {
@@ -54,7 +54,7 @@ fn bfs_half(h: &Bipartite) -> Bipartition {
             }
         }
 
-        if num_visited < h.v.len() / 2 {
+        if num_visited < h.num_pins() / 2 {
             bipartition[pop as usize] = true;
             num_visited += 1;
         } else {
@@ -69,7 +69,7 @@ const TAU: usize = 5;
 
 fn size_constrained_label_propagation(h: &Bipartite, epsilon: f32) -> Bipartition {
     let (v1, v2) = pseudo_peripheral_vertices(h);
-    let mut labels = vec![None; h.v.len()];
+    let mut labels = vec![None; h.pin_index_space_size()];
     let mut c1 = 0.0;
     let mut c2 = 0.0;
     let mut n = 0;
@@ -80,7 +80,7 @@ fn size_constrained_label_propagation(h: &Bipartite, epsilon: f32) -> Bipartitio
                   c2: &mut f32,
                   n: &mut usize| {
         let old = replace(&mut labels[v as usize], Some(l));
-        let c = h.c[v as usize];
+        let c = h.capacity(v);
         match (old, l) {
             (Some(false), true) => {
                 *c1 += c;
@@ -119,13 +119,13 @@ fn size_constrained_label_propagation(h: &Bipartite, epsilon: f32) -> Bipartitio
     }
 
     let size_constraint = h.size_constraint(epsilon);
-    while n < h.v.len() {
-        for v_idx in 0..h.v.len() {
-            if labels[v_idx].is_none() {
+    while n < h.num_pins() {
+        for v in h.pins() {
+            if labels[v as usize].is_none() {
                 let mut w1 = 0.0;
                 let mut w2 = 0.0;
-                for n in h.incident_nets(v_idx as Index) {
-                    let w = h.w[n as usize];
+                for n in h.incident_nets(v) {
+                    let w = h.weight(n);
                     if h.pins_in_net(n).any(|p| labels[p as usize] == Some(true)) {
                         w1 += w;
                     }
@@ -133,10 +133,10 @@ fn size_constrained_label_propagation(h: &Bipartite, epsilon: f32) -> Bipartitio
                         w2 += w;
                     }
                 }
-                let valid1 = c1 + h.c[v_idx] < size_constraint;
-                let valid2 = c1 + h.c[v_idx] < size_constraint;
+                let valid1 = c1 + h.capacity(v) < size_constraint;
+                let valid2 = c1 + h.capacity(v) < size_constraint;
                 assign(
-                    v_idx as Index,
+                    v,
                     valid1 && w1 >= w2 || !valid2,
                     &mut labels,
                     &mut c1,
@@ -147,14 +147,14 @@ fn size_constrained_label_propagation(h: &Bipartite, epsilon: f32) -> Bipartitio
         }
     }
 
-    labels.into_iter().map(|l| l.unwrap()).collect()
+    labels.into_iter().map(|l| l.unwrap_or(false)).collect()
 }
 
 fn pseudo_peripheral_vertices(h: &Bipartite) -> (Index, Index) {
     let last_bfs = |start_v| {
         let mut queue = VecDeque::new();
         queue.push_back(start_v);
-        let mut visited = bitvec![usize, Lsb0; 0; h.v.len()];
+        let mut visited = bitvec![usize, Lsb0; 0; h.pin_index_space_size()];
         visited.set(start_v as usize, true);
 
         let mut last = start_v;
@@ -170,8 +170,17 @@ fn pseudo_peripheral_vertices(h: &Bipartite) -> (Index, Index) {
         last
     };
 
-    let v1: Index = random::<Index>() % h.v.len() as Index;
+    let v1 = random_vertex(h);
     let v2 = last_bfs(v1);
     let v3 = last_bfs(v2);
     (v2, v3)
+}
+
+fn random_vertex(h: &Bipartite) -> Index {
+    loop {
+        let v: Index = random::<Index>() % h.pin_index_space_size() as Index;
+        if h.enabled(v) {
+            return v;
+        }
+    }
 }

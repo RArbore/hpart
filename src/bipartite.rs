@@ -9,28 +9,30 @@ pub(crate) type Index = u32;
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Bipartite {
     // V, E, and A arrays as described in section 4.5 of Schlag '2015.
-    pub(crate) v: Vec<(Index, Index)>,
-    pub(crate) e: Vec<(Index, Index)>,
-    pub(crate) a: Vec<Index>,
+    v: Vec<(Index, Index)>,
+    e: Vec<(Index, Index)>,
+    a: Vec<Index>,
 
     // Use an explicit bit vector to represent whether vertices are enabled or
     // disabled.
-    pub(crate) v_enabled: BitVec,
+    v_enabled: BitVec,
+    num_disabled: usize,
 
     // Capacities and weights of pins and nets.
-    pub(crate) c: Vec<f32>,
-    pub(crate) w: Vec<f32>,
+    c: Vec<f32>,
+    w: Vec<f32>,
 }
 
 /// Contractions produce mementos that can be applied in reverse to perform
 /// uncontractions.
+#[derive(Clone, Copy)]
 pub(crate) struct Memento {
     // Stores the pair of vertices contracted, as well as the slice into A of u
     // prior to contraction.
     pub(crate) u: Index,
     pub(crate) v: Index,
-    pub(crate) u_idx: Index,
-    pub(crate) u_len: Index,
+    u_idx: Index,
+    u_len: Index,
 }
 
 impl Bipartite {
@@ -78,12 +80,14 @@ impl Bipartite {
         }
 
         self.v_enabled.set(v as usize, false);
+        self.num_disabled += 1;
         memento
     }
 
     /// Implements Algorithm 3: Uncontract from Schlag '2015.
     pub(crate) fn uncontract(&mut self, m: Memento) {
         self.v_enabled.set(m.v as usize, true);
+        self.num_disabled -= 1;
         let mut b = bitvec![usize, Lsb0; 0; self.e.len()];
         for e in self.incident_nets(m.v) {
             b.set(e as usize, true);
@@ -119,13 +123,19 @@ impl Bipartite {
         }
     }
 
-    pub(crate) fn incident_nets(&self, v: Index) -> impl Iterator<Item = Index> + Clone + '_ {
+    pub(crate) fn incident_nets(
+        &self,
+        v: Index,
+    ) -> impl ExactSizeIterator<Item = Index> + Clone + '_ {
         let v_idx = self.v[v as usize].0 as usize;
         let v_len = self.v[v as usize].1 as usize;
         self.a[v_idx..v_idx + v_len].iter().map(|x| *x)
     }
 
-    pub(crate) fn pins_in_net(&self, e: Index) -> impl Iterator<Item = Index> + Clone + '_ {
+    pub(crate) fn pins_in_net(
+        &self,
+        e: Index,
+    ) -> impl ExactSizeIterator<Item = Index> + Clone + '_ {
         let e_idx = self.e[e as usize].0 as usize;
         let e_len = self.e[e as usize].1 as usize;
         self.a[e_idx..e_idx + e_len].iter().map(|x| *x)
@@ -136,27 +146,68 @@ impl Bipartite {
     }
 
     pub(crate) fn total_capacity(&self) -> f32 {
-        self.c.iter().sum()
+        self.c
+            .iter()
+            .enumerate()
+            .filter(|(idx, _)| self.v_enabled[*idx])
+            .map(|(_, c)| c)
+            .sum()
+    }
+
+    pub(crate) fn pins(&self) -> impl Iterator<Item = Index> + Clone + '_ {
+        (0..self.v.len())
+            .filter(|idx| self.v_enabled[*idx])
+            .map(|idx| idx as Index)
+    }
+
+    pub(crate) fn nets(&self) -> impl Iterator<Item = Index> + Clone {
+        (0..self.e.len()).map(|idx| idx as Index)
+    }
+
+    pub(crate) fn enabled(&self, v: Index) -> bool {
+        self.v_enabled[v as usize]
+    }
+
+    pub(crate) fn capacity(&self, v: Index) -> f32 {
+        assert!(self.v_enabled[v as usize]);
+        self.c[v as usize]
+    }
+
+    pub(crate) fn weight(&self, e: Index) -> f32 {
+        self.w[e as usize]
+    }
+
+    pub(crate) fn num_pins(&self) -> usize {
+        self.v.len() - self.num_disabled
+    }
+
+    pub(crate) fn pin_index_space_size(&self) -> usize {
+        self.v.len()
+    }
+
+    pub(crate) fn num_nets(&self) -> usize {
+        self.e.len()
     }
 
     /// Evaluates a bipartition. Returns the bipartition's imbalance (capacity of
     /// the largest cluster) and cost (weight of the cut edges).
     pub(crate) fn evaluate_bipartition(&self, p: &Bipartition) -> (f32, f32) {
         let mut cut_weight = 0.0;
-        for e_idx in 0..self.e.len() {
-            let clusters = self.pins_in_net(e_idx as Index).map(|v| p[v as usize]);
+        for e in self.nets() {
+            let clusters = self.pins_in_net(e).map(|v| p[v as usize]);
             if zip(clusters.clone(), clusters.skip(1)).any(|(l1, l2)| l1 != l2) {
-                cut_weight += self.w[e_idx];
+                cut_weight += self.w[e as usize];
             }
         }
 
         let mut capacity1 = 0.0;
         let mut capacity2 = 0.0;
-        for v_idx in 0..self.v.len() {
-            if p[v_idx] {
-                capacity1 += self.c[v_idx];
+        for v in self.pins() {
+            let c = self.c[v as usize];
+            if p[v as usize] {
+                capacity1 += c;
             } else {
-                capacity2 += self.c[v_idx];
+                capacity2 += c;
             }
         }
         let imbalance = capacity1.max(capacity2);
@@ -185,6 +236,7 @@ mod tests {
             e: vec![(7, 4), (11, 3)],
             a: vec![0, 0, 1, 0, 0, 1, 1, 0, 1, 2, 3, 1, 4, 5],
             v_enabled: bitvec![usize, Lsb0; 1; 6],
+            num_disabled: 0,
             c: vec![1.0; 6],
             w: vec![1.0; 2],
         };
@@ -197,6 +249,7 @@ mod tests {
             e: vec![(7, 3), (11, 3)],
             a: vec![0, 0, 1, 0, 0, 1, 1, 0, 3, 2, 1, 5, 4, 0, 0, 1],
             v_enabled: bitvec![1, 0, 1, 1, 1, 1],
+            num_disabled: 1,
             c: vec![2.0, 1.0, 1.0, 1.0, 1.0, 1.0],
             w: vec![1.0; 2],
         };
@@ -208,6 +261,7 @@ mod tests {
             v: vec![(0, 1), (1, 2), (3, 1), (4, 1), (5, 1), (6, 1)],
             e: vec![(7, 4), (11, 3)],
             a: vec![0, 0, 1, 0, 0, 1, 1, 0, 3, 2, 1, 5, 4, 1, 0, 1],
+            num_disabled: 0,
             v_enabled: bitvec![usize, Lsb0; 1; 6],
             c: vec![1.0; 6],
             w: vec![1.0; 2],
