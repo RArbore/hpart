@@ -1,3 +1,5 @@
+use std::iter::zip;
+
 use bitvec::prelude::*;
 
 pub(crate) type Index = u32;
@@ -117,24 +119,49 @@ impl Bipartite {
         }
     }
 
-    pub(crate) fn incident_nets(&self, v: Index) -> impl Iterator<Item = Index> + '_ {
+    pub(crate) fn incident_nets(&self, v: Index) -> impl Iterator<Item = Index> + Clone + '_ {
         let v_idx = self.v[v as usize].0 as usize;
         let v_len = self.v[v as usize].1 as usize;
         self.a[v_idx..v_idx + v_len].iter().map(|x| *x)
     }
 
-    pub(crate) fn pins_in_net(&self, e: Index) -> impl Iterator<Item = Index> + '_ {
+    pub(crate) fn pins_in_net(&self, e: Index) -> impl Iterator<Item = Index> + Clone + '_ {
         let e_idx = self.e[e as usize].0 as usize;
         let e_len = self.e[e as usize].1 as usize;
         self.a[e_idx..e_idx + e_len].iter().map(|x| *x)
     }
 
-    pub(crate) fn incident_pins(&self, v: Index) -> impl Iterator<Item = Index> + '_ {
+    pub(crate) fn incident_pins(&self, v: Index) -> impl Iterator<Item = Index> + Clone + '_ {
         self.incident_nets(v).map(|e| self.pins_in_net(e)).flatten()
     }
 
     pub(crate) fn total_capacity(&self) -> f32 {
         self.c.iter().sum()
+    }
+
+    /// Evaluates a bipartition. Returns the bipartition's imbalance (capacity of
+    /// the largest cluster) and cost (weight of the cut edges).
+    pub(crate) fn evaluate_bipartition(&self, p: &Bipartition) -> (f32, f32) {
+        let mut cut_weight = 0.0;
+        for e_idx in 0..self.e.len() {
+            let clusters = self.pins_in_net(e_idx as Index).map(|v| p[v as usize]);
+            if zip(clusters.clone(), clusters.skip(1)).any(|(l1, l2)| l1 != l2) {
+                cut_weight += self.w[e_idx];
+            }
+        }
+
+        let mut capacity1 = 0.0;
+        let mut capacity2 = 0.0;
+        for v_idx in 0..self.v.len() {
+            if p[v_idx] {
+                capacity1 += self.c[v_idx];
+            } else {
+                capacity2 += self.c[v_idx];
+            }
+        }
+        let imbalance = capacity1.max(capacity2);
+
+        (imbalance, cut_weight)
     }
 }
 
