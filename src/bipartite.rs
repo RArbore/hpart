@@ -138,9 +138,8 @@ impl Bipartite {
     }
 }
 
-/// A bipartition is just the vertices in each half. Technically, only one of
-/// these is necessary to derive the other, but it's convenient to have both.
-pub(crate) type Bipartition = (Vec<Index>, Vec<Index>);
+/// A bipartition is an assignment of a bool to each vertex.
+pub(crate) type Bipartition = Vec<bool>;
 
 #[cfg(test)]
 mod tests {

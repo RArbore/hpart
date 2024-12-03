@@ -7,17 +7,7 @@ use rand::prelude::*;
 use crate::bipartite::*;
 
 fn random_partioning(h: &Bipartite) -> Bipartition {
-    let mut bipartition = (vec![], vec![]);
-
-    for v in 0..h.v.len() {
-        if random() {
-            bipartition.0.push(v as Index);
-        } else {
-            bipartition.1.push(v as Index);
-        }
-    }
-
-    bipartition
+    (0..h.v.len()).map(|_| random()).collect()
 }
 
 fn bfs_half(h: &Bipartite) -> Bipartition {
@@ -27,7 +17,8 @@ fn bfs_half(h: &Bipartite) -> Bipartition {
     let mut visited = bitvec![usize, Lsb0; 0; h.v.len()];
     visited.set(start_v as usize, true);
 
-    let mut bipartition = (vec![], vec![]);
+    let mut bipartition = vec![false; h.v.len()];
+    let mut num_visited = 0;
     while let Some(pop) = queue.pop_front() {
         for neighbor in h.incident_pins(pop) {
             if !visited[neighbor as usize] {
@@ -36,10 +27,11 @@ fn bfs_half(h: &Bipartite) -> Bipartition {
             }
         }
 
-        if bipartition.0.len() < h.v.len() / 2 {
-            bipartition.0.push(pop);
+        if num_visited < h.v.len() / 2 {
+            bipartition[pop as usize] = true;
+            num_visited += 1;
         } else {
-            bipartition.1.push(pop);
+            break;
         }
     }
 
@@ -49,7 +41,6 @@ fn bfs_half(h: &Bipartite) -> Bipartition {
 const TAU: usize = 5;
 
 fn size_constrained_label_propagation(h: &Bipartite, epsilon: f32) -> Bipartition {
-    let mut bipartition = (vec![], vec![]);
     let (v1, v2) = pseudo_peripheral_vertices(h);
     let mut labels = vec![None; h.v.len()];
     let mut c1 = 0.0;
@@ -129,14 +120,7 @@ fn size_constrained_label_propagation(h: &Bipartite, epsilon: f32) -> Bipartitio
         }
     }
 
-    for (v, l) in labels.into_iter().enumerate() {
-        if l.unwrap() {
-            bipartition.0.push(v as Index);
-        } else {
-            bipartition.1.push(v as Index);
-        }
-    }
-    bipartition
+    labels.into_iter().map(|l| l.unwrap()).collect()
 }
 
 fn pseudo_peripheral_vertices(h: &Bipartite) -> (Index, Index) {
