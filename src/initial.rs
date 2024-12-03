@@ -2,11 +2,38 @@ use std::collections::VecDeque;
 use std::mem::replace;
 
 use bitvec::prelude::*;
+use ordered_float::OrderedFloat;
 use rand::prelude::*;
 
 use crate::bipartite::*;
 
-fn random_partioning(h: &Bipartite) -> Bipartition {
+const NUM_ITERS: usize = 20;
+
+/// Compute an initial partitioning on a coarsened hypergraph. Runs a portfolio
+/// of algorithms and returns the best found bipartition.
+pub(crate) fn initial_partitioning(h: &Bipartite, epsilon: f32) -> Bipartition {
+    let random_parts = (0..NUM_ITERS).map(|_| random_partitioning(h));
+    let bfs_half_parts = (0..NUM_ITERS).map(|_| bfs_half(h));
+    let sclap_parts = (0..NUM_ITERS).map(|_| size_constrained_label_propagation(h, epsilon));
+    let all_partitions: Vec<_> = random_parts
+        .chain(bfs_half_parts)
+        .chain(sclap_parts)
+        .collect();
+
+    let size_constraint = h.size_constraint(epsilon);
+    all_partitions
+        .into_iter()
+        .min_by_key(|part| {
+            let (imbalance, weight) = h.evaluate_bipartition(part);
+            (
+                OrderedFloat(imbalance.max(size_constraint)),
+                OrderedFloat(weight),
+            )
+        })
+        .unwrap()
+}
+
+fn random_partitioning(h: &Bipartite) -> Bipartition {
     (0..h.v.len()).map(|_| random()).collect()
 }
 
@@ -91,7 +118,7 @@ fn size_constrained_label_propagation(h: &Bipartite, epsilon: f32) -> Bipartitio
         assign(v, false, &mut labels, &mut c1, &mut c2, &mut n);
     }
 
-    let size_constraint = (1.0 + epsilon) * (h.total_capacity() as f32 / 2.0);
+    let size_constraint = h.size_constraint(epsilon);
     while n < h.v.len() {
         for v_idx in 0..h.v.len() {
             if labels[v_idx].is_none() {

@@ -163,6 +163,11 @@ impl Bipartite {
 
         (imbalance, cut_weight)
     }
+
+    /// Calculate the maximum size for a bipartition, given epsilon.
+    pub(crate) fn size_constraint(&self, epsilon: f32) -> f32 {
+        (1.0 + epsilon) * (self.total_capacity() as f32 / 2.0)
+    }
 }
 
 /// A bipartition is an assignment of a bool to each vertex.
