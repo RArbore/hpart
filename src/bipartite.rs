@@ -123,14 +123,18 @@ impl Bipartite {
         self.a[v_idx..v_idx + v_len].iter().map(|x| *x)
     }
 
+    pub(crate) fn pins_in_net(&self, e: Index) -> impl Iterator<Item = Index> + '_ {
+        let e_idx = self.e[e as usize].0 as usize;
+        let e_len = self.e[e as usize].1 as usize;
+        self.a[e_idx..e_idx + e_len].iter().map(|x| *x)
+    }
+
     pub(crate) fn incident_pins(&self, v: Index) -> impl Iterator<Item = Index> + '_ {
-        self.incident_nets(v)
-            .map(|e| {
-                let e_idx = self.e[e as usize].0 as usize;
-                let e_len = self.e[e as usize].1 as usize;
-                self.a[e_idx..e_idx + e_len].iter().map(|x| *x)
-            })
-            .flatten()
+        self.incident_nets(v).map(|e| self.pins_in_net(e)).flatten()
+    }
+
+    pub(crate) fn total_capacity(&self) -> f32 {
+        self.c.iter().sum()
     }
 }
 
