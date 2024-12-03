@@ -5,7 +5,7 @@ use ordered_float::OrderedFloat;
 
 use crate::bipartite::*;
 
-pub(crate) fn coarsen(h: &mut Bipartite) {
+pub(crate) fn coarsen(h: &mut Bipartite) -> Vec<Memento> {
     let c_max = S * h.total_capacity() / T as f32;
 
     let mut pq = BinaryHeap::new();
@@ -23,6 +23,7 @@ pub(crate) fn coarsen(h: &mut Bipartite) {
     let mut removed = bitvec![usize, Lsb0; 0; h.v.len()];
     let mut invalid = bitvec![usize, Lsb0; 0; h.v.len()];
 
+    let mut mementos = vec![];
     while h.v.len() >= T {
         let Some((_, (u, v))) = pq.pop() else {
             continue;
@@ -40,13 +41,15 @@ pub(crate) fn coarsen(h: &mut Bipartite) {
             continue;
         }
 
-        h.contract(u, v);
+        mementos.push(h.contract(u, v));
         removed.set(v as usize, true);
 
         for n in h.incident_pins(u) {
             invalid.set(n as usize, true);
         }
     }
+
+    mementos
 }
 
 /// Constants from Section 5 from Schlag '2015.
