@@ -176,7 +176,10 @@ impl Bipartite {
     }
 
     pub(crate) fn incident_pins(&self, v: Index) -> impl Iterator<Item = Index> + Clone + '_ {
-        self.incident_nets(v).map(|e| self.pins_in_net(e)).flatten()
+        self.incident_nets(v)
+            .map(|e| self.pins_in_net(e))
+            .flatten()
+            .filter(move |u| *u != v)
     }
 
     pub(crate) fn total_capacity(&self) -> f32 {

@@ -14,10 +14,12 @@ pub(crate) fn coarsen(h: &mut Bipartite) -> Vec<Memento> {
             continue;
         }
 
-        let v = h
+        let Some(v) = h
             .incident_pins(u)
             .max_by_key(|v| OrderedFloat(rate(h, u, *v)))
-            .unwrap();
+        else {
+            continue;
+        };
         pq.push((OrderedFloat(rate(h, u, v)), (u, v)));
     }
     let mut removed = bitvec![usize, Lsb0; 0; h.pin_index_space_size()];
@@ -53,7 +55,7 @@ pub(crate) fn coarsen(h: &mut Bipartite) -> Vec<Memento> {
 }
 
 /// Constants from Section 5 from Schlag '2015.
-const T: usize = 320;
+const T: usize = 100;
 const S: f32 = 3.25;
 
 fn rate(h: &Bipartite, u: Index, v: Index) -> f32 {
