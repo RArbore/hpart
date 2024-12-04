@@ -37,9 +37,9 @@ mod tests {
 
     #[test]
     fn bipartition_random_hypergraph() {
-        let num_v = 200;
-        let num_e = 200;
-        let max_net_size = 4;
+        let num_v = 4000;
+        let num_e = 1000;
+        let max_net_size = 5;
 
         let capacities: Vec<_> = (0..num_v).map(|_| random::<f32>()).collect();
         let weights: Vec<_> = (0..num_e).map(|_| random::<f32>()).collect();
@@ -52,7 +52,7 @@ mod tests {
             })
             .collect();
         let nets_ref: Vec<&[_]> = nets.iter().map(|vec| &**vec).collect();
-        let best_eval = (0..32)
+        let best_eval = (0..16)
             .into_par_iter()
             .map(|_| bipartition(&capacities, &weights, &nets_ref, 0.03).1)
             .min_by_key(|(_, cost)| OrderedFloat(*cost));

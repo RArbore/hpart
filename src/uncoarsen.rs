@@ -21,6 +21,16 @@ pub(crate) fn uncoarsen(
         let v = memento.v;
         h.uncontract(memento);
         partition[v as usize] = partition[u as usize];
+        let mut b1_capacity = h
+            .pins()
+            .filter(|v| partition[*v as usize])
+            .map(|v| h.capacity(v))
+            .sum::<f32>();
+        let mut b2_capacity = h
+            .pins()
+            .filter(|v| !partition[*v as usize])
+            .map(|v| h.capacity(v))
+            .sum::<f32>();
 
         let border_u = h
             .incident_pins(u)
@@ -64,7 +74,17 @@ pub(crate) fn uncoarsen(
             current_gain += g;
             partition[v as usize] = !partition[v as usize];
             steps.push(v);
-            if current_gain >= best_gain {
+            if partition[v as usize] {
+                b1_capacity += h.capacity(v);
+                b2_capacity += h.capacity(v);
+            } else {
+                b1_capacity -= h.capacity(v);
+                b2_capacity += h.capacity(v);
+            }
+            if current_gain >= best_gain
+                && b1_capacity <= size_constraint
+                && b2_capacity <= size_constraint
+            {
                 best_step = steps.len();
                 best_gain = current_gain;
             }

@@ -26,11 +26,9 @@ pub(crate) fn coarsen(h: &mut Bipartite) -> Vec<Memento> {
     let mut invalid = bitvec![usize, Lsb0; 0; h.pin_index_space_size()];
 
     let mut mementos = vec![];
-    while h.num_pins() >= T {
-        let Some((_, (u, v))) = pq.pop() else {
-            continue;
-        };
-
+    while let Some((_, (u, v))) = pq.pop()
+        && h.num_pins() >= T
+    {
         if removed[u as usize] {
             continue;
         } else if invalid[u as usize] {
