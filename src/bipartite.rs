@@ -2,7 +2,7 @@ use std::iter::zip;
 
 use bitvec::prelude::*;
 
-pub(crate) type Index = u32;
+pub type Index = u32;
 
 /// The data structure internal to this hypergraph partitioner is a bipartite
 /// graph between pins and nets.
@@ -36,6 +36,40 @@ pub(crate) struct Memento {
 }
 
 impl Bipartite {
+    pub(crate) fn new(capacities: &[f32], weights: &[f32], nets: &[&[Index]]) -> Self {
+        let num_v = capacities.len();
+        let num_e = weights.len();
+        assert_eq!(num_e, nets.len());
+        let mut bipartite = Bipartite {
+            v: vec![],
+            e: vec![],
+            a: vec![],
+            v_enabled: bitvec![usize, Lsb0; 1; num_v],
+            num_disabled: 0,
+            c: Vec::from(capacities),
+            w: Vec::from(weights),
+        };
+
+        for net in nets {
+            bipartite
+                .e
+                .push((bipartite.a.len() as Index, net.len() as Index));
+            bipartite.a.extend(*net);
+        }
+        for v_idx in 0..num_v {
+            let old_a = bipartite.a.len();
+            for (e_idx, net) in nets.into_iter().enumerate() {
+                if net.into_iter().any(|p| *p == v_idx as Index) {
+                    bipartite.a.push(e_idx as Index);
+                }
+            }
+            let num_nets = bipartite.a.len() - old_a;
+            bipartite.v.push((old_a as Index, num_nets as Index));
+        }
+
+        bipartite
+    }
+
     /// Implements Algorithm 2: Contract from Schlag '2015.
     pub(crate) fn contract(&mut self, u: Index, v: Index) -> Memento {
         assert_ne!(u, v);
