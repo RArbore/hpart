@@ -1,3 +1,4 @@
+#![feature(let_chains)]
 mod bipartite;
 mod coarsen;
 mod initial;
@@ -37,7 +38,7 @@ mod tests {
     #[test]
     fn bipartition_random_hypergraph() {
         let num_v = 200;
-        let num_e = 80;
+        let num_e = 200;
         let max_net_size = 4;
 
         let capacities: Vec<_> = (0..num_v).map(|_| random::<f32>()).collect();
