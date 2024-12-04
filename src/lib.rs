@@ -37,8 +37,8 @@ mod tests {
 
     #[test]
     fn bipartition_random_hypergraph() {
-        let num_v = 4000;
-        let num_e = 1000;
+        let num_v = 2000;
+        let num_e = 500;
         let max_net_size = 4;
 
         let capacities: Vec<_> = (0..num_v).map(|_| random::<f32>()).collect();

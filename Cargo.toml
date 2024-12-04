@@ -1,13 +1,13 @@
 [package]
 name = "hpart"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Russel Arbore", "Ryan Ziegler"]
 description = "A hypergraph partitioning library."
 license = "Apache-2.0"
 
 [dependencies]
-bitvec = "*"
-ordered-float = "*"
-rand = "*"
-rayon = "*"
+bitvec = "1.0.1"
+ordered-float = "4.5.0"
+rand = "0.8.5"
+rayon = "1.10.0"
